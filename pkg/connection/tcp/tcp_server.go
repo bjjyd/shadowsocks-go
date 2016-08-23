@@ -5,16 +5,16 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"reflect"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
 	"shadowsocks-go/pkg/config"
-	connection "shadowsocks-go/pkg/connection"
-	encrypt "shadowsocks-go/pkg/connection"
+	connection "shadowsocks-go/pkg/connection/tcp/unmaintained"
+	encrypt "shadowsocks-go/pkg/connection/tcp/unmaintained"
 	"shadowsocks-go/pkg/util"
 
 	"github.com/golang/glog"
@@ -36,23 +36,36 @@ const (
 	lenHmacSha1 = 10
 )
 
-// PortListener is a listener
-type PortListener struct {
-	password string
-	listener net.Listener
-}
-
 //TCPServer maintain a listener
 type TCPServer struct {
-	Config *config.ConnectionInfo
-	quit   chan struct{}
+	Config          *config.ConnectionInfo
+	quit            chan struct{}
+	UploadTraffic   int64 //request upload traffic
+	DownloadTraffic int64 //request download traffic
+	//ClientDict Mapping from client addresses (as host:port) to connection
+	clientDict map[string]*connector
+
+	//mutex Mutex used to serialize access to the dictionary
+	mutex *sync.Mutex
+}
+
+type accepted struct {
+	conn net.Conn
+	err  error
+}
+
+type connector struct {
+	clientConn *connection.Conn
+	serverConn map[string]net.Conn //proxy to remote connnection
 }
 
 //NewTCPServer create a TCPServer
 func NewTCPServer(cfg *config.ConnectionInfo) *TCPServer {
 	return &TCPServer{
-		Config: cfg,
-		quit:   make(chan struct{}),
+		Config:     cfg,
+		quit:       make(chan struct{}),
+		clientDict: make(map[string]*connector),
+		mutex:      new(sync.Mutex),
 	}
 }
 
@@ -62,9 +75,14 @@ func (tcpSrv *TCPServer) Stop() {
 	close(tcpSrv.quit)
 }
 
+//Traffic ollection traffic for client,return upload traffic and download traffic
+func (tcpSrv *TCPServer) Traffic() (int64, int64) {
+	return tcpSrv.UploadTraffic, tcpSrv.DownloadTraffic
+}
+
 func getRequest(conn *connection.Conn, auth bool, timeout time.Duration) (host string, ota bool, err error) {
 
-	connection.SetReadTimeout(conn, timeout)
+	SetReadTimeout(conn, timeout)
 
 	// buf size should at least have the same size with the largest possible
 	// request size (when addrType is 3, domain name has at most 256 bytes)
@@ -75,13 +93,6 @@ func getRequest(conn *connection.Conn, auth bool, timeout time.Duration) (host s
 		glog.Errorln("read buffer from remote connection error:", err)
 		return
 	}
-
-	// if _, err = io.ReadFull(conn, buf[:64]); err != nil {
-	// 	glog.Errorln("read buffer from remote connection error:", err)
-	// 	return
-	// }
-	// glog.V(5).Infof("Got a Request string is byte:%v string:%v)\r\n", buf, string(buf))
-	// return
 
 	var reqStart, reqEnd int
 	addrType := buf[idType]
@@ -139,46 +150,33 @@ func getRequest(conn *connection.Conn, auth bool, timeout time.Duration) (host s
 	return
 }
 
-const logCntDelta = 100
-
-var connCnt int
-var nextLogConnCnt int = logCntDelta
-
 type isClosed struct {
 	isClosed bool
 }
 
-func handleConnection(conn *connection.Conn, auth bool, timeout time.Duration) {
-	var host string
-
-	connCnt++ // this maybe not accurate, but should be enough
-	if connCnt-nextLogConnCnt >= 0 {
-		// XXX There's no xadd in the atomic package, so it's difficult to log
-		// the message only once with low cost. Also note nextLogConnCnt maybe
-		// added twice for current peak connection number level.
-		log.Printf("Number of client connections reaches %d\n", nextLogConnCnt)
-		nextLogConnCnt += logCntDelta
-	}
-
-	// function arguments are always evaluated, so surround debug statement
-	// with if statement
-	glog.V(5).Infof("new client %s->%s\n", conn.RemoteAddr().String(), conn.LocalAddr())
+func (tcpSrv *TCPServer) handleConnection(clientKey string) {
+	connector := tcpSrv.clientDict[clientKey]
+	conn := connector.clientConn
+	timeout := time.Duration(tcpSrv.Config.Timeout) * time.Second
 
 	closed := false
 	defer func() {
-		glog.V(5).Infof("closed pipe %s<->%s\n", conn.RemoteAddr(), host)
-		connCnt--
 		if !closed {
 			conn.Close()
+			tcpSrv.lock()
+			delete(tcpSrv.clientDict, clientKey)
+			tcpSrv.unlock()
 		}
 	}()
 
-	host, ota, err := getRequest(conn, auth, timeout)
+	var host string
+	host, ota, err := getRequest(conn, tcpSrv.Config.EnableOTA, timeout)
 	if err != nil {
 		glog.Errorf("error getting request %v<->%v err:%v", conn.RemoteAddr(), conn.LocalAddr(), err)
 		return
 	}
 	glog.V(5).Infof("connection host:%v ota:%v \r\n", host, ota)
+
 	remote, err := net.Dial("tcp", host)
 	if err != nil {
 		if ne, ok := err.(*net.OpError); ok && (ne.Err == syscall.EMFILE || ne.Err == syscall.ENFILE) {
@@ -188,35 +186,70 @@ func handleConnection(conn *connection.Conn, auth bool, timeout time.Duration) {
 		} else {
 			glog.Errorf(" connecting to:%v occur err:%v", host, err)
 		}
-
 		return
 	}
+	connector.serverConn[host] = remote
+
 	defer func() {
 		if !closed {
 			remote.Close()
+			delete(connector.serverConn, host)
 		}
 	}()
 
 	glog.V(5).Infof("piping %s<->%s ota=%v connOta=%v", conn.RemoteAddr(), host, ota, conn.IsOta())
 
 	if ota {
-		go connection.PipeThenCloseOta(conn, remote, timeout)
+		go tcpSrv.handleRequest(conn, remote, timeout)
 	} else {
-		go connection.PipeThenClose(conn, remote, timeout)
+		go tcpSrv.PipeThenClose(conn, remote, timeout, true)
 	}
-	connection.PipeThenClose(remote, conn, timeout)
+	tcpSrv.PipeThenClose(remote, conn, timeout, false)
 	closed = true
 	return
 }
 
+func (tcpSrv *TCPServer) lock() {
+	tcpSrv.mutex.Lock()
+}
+
+func (tcpSrv *TCPServer) unlock() {
+	tcpSrv.mutex.Unlock()
+}
+
+func (tcpSrv *TCPServer) process(accept accepted, cipher *encrypt.Cipher) {
+	if accept.err != nil {
+		glog.V(5).Infof("accept error: %v\n", accept.err)
+		return
+	}
+
+	reqAddr := accept.conn.RemoteAddr().String()
+
+	tcpSrv.lock()
+	connnector, found := tcpSrv.clientDict[reqAddr]
+	if !found {
+		conn := connection.NewConn(accept.conn, cipher.Copy())
+		connnector = &connector{
+			clientConn: conn,
+			serverConn: make(map[string]net.Conn),
+		}
+
+		tcpSrv.clientDict[reqAddr] = connnector
+		tcpSrv.unlock()
+
+		glog.V(5).Infof("Created new connection for client %s\n", reqAddr)
+	} else {
+		glog.V(5).Infof("Found connection for client %s\n", reqAddr)
+		tcpSrv.unlock()
+	}
+	go tcpSrv.handleConnection(reqAddr)
+}
+
 //Run start a tcp listen for user
 func (tcpSrv *TCPServer) Run() {
-
 	password := tcpSrv.Config.Password
 	method := tcpSrv.Config.EncryptMethod
 	port := tcpSrv.Config.Port
-	auth := tcpSrv.Config.EnableOTA
-	timeout := time.Duration(tcpSrv.Config.Timeout) * time.Second
 
 	portStr := strconv.Itoa(port)
 	ln, err := net.Listen("tcp", ":"+portStr)
@@ -225,23 +258,17 @@ func (tcpSrv *TCPServer) Run() {
 	}
 	defer ln.Close()
 
-	glog.Infof("creating cipher for port :%v and method: %v\r\n", port, method)
 	cipher, err := encrypt.NewCipher(method, password)
 	if err != nil {
 		glog.Errorf("Error generating cipher for port: %s %v\n", port, err)
 		return
 	}
-
 	glog.V(5).Infof("tcp server listening on %v port %v  ...\n", ln.Addr().String(), port)
 
 	for {
-		type accepted struct {
-			conn net.Conn
-			err  error
-		}
 		c := make(chan accepted, 1)
 		go func() {
-			glog.Infof("wait for accept\r\n")
+			glog.V(5).Infoln("wait for accept")
 			var conn net.Conn
 			conn, err = ln.Accept()
 			c <- accepted{conn: conn, err: err}
@@ -252,90 +279,11 @@ func (tcpSrv *TCPServer) Run() {
 			glog.Infof("Receive Quit singal for %s\r\n", port)
 			return
 		case accept := <-c:
-			if accept.err != nil {
-				glog.V(5).Infof("accept error: %v\n", err)
-				continue
-			}
-			go handleConnection(connection.NewConn(accept.conn, cipher.Copy()), auth, timeout)
+			tcpSrv.process(accept, cipher.Copy())
 		}
 	}
 }
 
-// func (tcpSrv *TCPServer) Run() {
-//
-// 	password := tcpSrv.Config.Password
-// 	method := tcpSrv.Config.EncryptMethod
-// 	port := tcpSrv.Config.Port
-// 	auth := tcpSrv.Config.EnableOTA
-// 	timeout := time.Duration(tcpSrv.Config.Timeout) * time.Second
-//
-// 	portStr := strconv.Itoa(port)
-// 	ln, err := net.Listen("tcp", ":"+portStr)
-// 	if err != nil {
-// 		glog.Errorf("tcp server(%v) error: %v\n", port, err)
-// 		os.Exit(1)
-// 	}
-// 	//passwdManager.add(password, port, ln)
-// 	var cipher *encrypt.Cipher
-// 	glog.V(5).Infof("tcp server listening on %v port %v  ...\n", ln.Addr().String(), port)
-// 	for {
-// 		select {
-// 		case <-tcpSrv.quit:
-// 			glog.Infof("Receive Quit singal for %s\r\n", port)
-// 			ln.Close()
-// 			break
-// 		default:
-// 			glog.Infof("wait for accept\r\n")
-// 			conn, err := ln.Accept()
-// 			if err != nil {
-// 				glog.V(5).Infof("accept error: %v\n", err)
-// 				return
-// 			}
-// 			if cipher == nil {
-// 				glog.Infof("creating cipher for port :%v and method: %v\r\n", port, method)
-// 				cipher, err = encrypt.NewCipher(method, password)
-// 				if err != nil {
-// 					glog.Errorf("Error generating cipher for port: %s %v\n", port, err)
-// 					conn.Close()
-// 					continue
-// 				}
-// 			}
-// 			go handleConnection(connection.NewConn(conn, cipher.Copy()), auth, timeout)
-// 		}
-// 	}
-// }
-
 func (tcpSrv *TCPServer) Compare(client *config.ConnectionInfo) bool {
 	return reflect.DeepEqual(*tcpSrv.Config, *client)
 }
-
-// func Run(password, method string, port int, auth bool, timeout time.Duration) {
-// 	portStr := strconv.Itoa(port)
-// 	ln, err := net.Listen("tcp", ":"+portStr)
-// 	if err != nil {
-// 		log.Printf("error listening port %v: %v\n", port, err)
-// 		os.Exit(1)
-// 	}
-// 	//passwdManager.add(password, port, ln)
-// 	var cipher *encrypt.Cipher
-// 	log.Printf("server listening port %v ...\n", port)
-// 	for {
-// 		conn, err := ln.Accept()
-// 		if err != nil {
-// 			// listener maybe closed to update password
-// 			glog.V(5).Infof("accept error: %v\n", err)
-// 			return
-// 		}
-// 		// Creating cipher upon first connection.
-// 		if cipher == nil {
-// 			glog.Infof("creating cipher for port :%v and method: %v\r\n", port, method)
-// 			cipher, err = encrypt.NewCipher(method, password)
-// 			if err != nil {
-// 				glog.Errorf("Error generating cipher for port: %s %v\n", port, err)
-// 				conn.Close()
-// 				continue
-// 			}
-// 		}
-// 		go handleConnection(connection.NewConn(conn, cipher.Copy()), auth, timeout)
-// 	}
-// }

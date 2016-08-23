@@ -9,4 +9,5 @@ type ProxyServer interface {
 	Run()
 	Stop()
 	Compare(*config.ConnectionInfo) bool
+	Traffic() (int64, int64)
 }
