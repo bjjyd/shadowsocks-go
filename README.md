@@ -1,16 +1,10 @@
 # shadowsocks-go
 
-[![Join the chat at https://gitter.im/orvice/shadowsocks-go](https://badges.gitter.im/orvice/shadowsocks-go.svg)](https://gitter.im/orvice/shadowsocks-go?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-
-Current version: 1.1.4 [![Build Status](https://travis-ci.org/orvice/shadowsocks-go.svg?branch=master)](https://travis-ci.org/orvice/shadowsocks-go)
+[![Build Status](https://travis-ci.org/bjjyd/shadowsocks-go.svg?branch=master)](https://travis-ci.org/bjjyd/shadowsocks-go/)
 
 shadowsocks-go is a lightweight tunnel proxy which can help you get through firewalls. It is a port of [shadowsocks](https://github.com/clowwindy/shadowsocks).
 
 The protocol is compatible with the origin shadowsocks (if both have been upgraded to the latest version).
-
-**Note `server_password` option syntax changed in 0.6.2, the client now connects to servers in the order specified in the config.**
-
-**Please develop on the latest develop branch if you want to send pull request.**
 
 # Install & Simple Run
 
