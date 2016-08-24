@@ -1,5 +1,5 @@
 {
-	"ImportPath": "shadowsocks/shadowsocks-go",
+	"ImportPath": "shadowsocks-go",
 	"GoVersion": "go1.6",
 	"GodepVersion": "v74",
 	"Packages": [
@@ -15,6 +15,10 @@
 			"ImportPath": "github.com/Terry-Mao/goconf",
 			"Comment": "v1.0-4-g100b458",
 			"Rev": "100b4585853d399f9cbbdca8b5f5da2b50727241"
+		},
+		{
+			"ImportPath": "github.com/codahale/chacha20",
+			"Rev": "ec07b4f69a3f70b1dd2a8ad77230deb1ba5d6953"
 		},
 		{
 			"ImportPath": "github.com/cyfdecyf/leakybuf",
