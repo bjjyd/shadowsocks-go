@@ -4,10 +4,10 @@ go:
   - release
   - tip
 
+go_import_path: shadowsocks-go
+
 before_install:
   - go get github.com/tools/godep
-
-go_import_path: github.com/bjjyd
 
 install:
   - godep restore
