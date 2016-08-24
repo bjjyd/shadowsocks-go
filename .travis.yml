@@ -11,4 +11,4 @@ install:
   - godep restore
 
 script:
-  - cd cmd/shadowss/server && go build -x  -o shadowss
+  - cd cmd/shadowss/server && go build -a  -o shadowss
