@@ -1,6 +1,14 @@
 language: go
 go:
   - 1.6.2
+  - release
+  - tip
+
+before_install:
+  - go get github.com/tools/godep
+
+install:
+  - godep restore
+
 script:
   - cd cmd/shadowss/server && go build -x  -o shadowss
-sudo: required
