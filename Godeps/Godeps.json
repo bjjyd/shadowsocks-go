@@ -7,28 +7,13 @@
 	],
 	"Deps": [
 		{
-			"ImportPath": "github.com/Sirupsen/logrus",
-			"Comment": "v0.10.0-28-ga283a10",
-			"Rev": "a283a10442df8dc09befd873fab202bf8a253d6a"
-		},
-		{
-			"ImportPath": "github.com/Terry-Mao/goconf",
-			"Comment": "v1.0-4-g100b458",
-			"Rev": "100b4585853d399f9cbbdca8b5f5da2b50727241"
-		},
-		{
 			"ImportPath": "github.com/codahale/chacha20",
 			"Rev": "ec07b4f69a3f70b1dd2a8ad77230deb1ba5d6953"
 		},
 		{
-			"ImportPath": "github.com/cyfdecyf/leakybuf",
-			"Comment": "1.0",
-			"Rev": "ffae040843bee2891b6306d1d085c25ca822e72c"
-		},
-		{
 			"ImportPath": "github.com/go-sql-driver/mysql",
-			"Comment": "v1.2-196-g3654d25",
-			"Rev": "3654d25ec346ee8ce71a68431025458d52a38ac0"
+			"Comment": "v1.2-198-g0b58b37",
+			"Rev": "0b58b37b664c21f3010e836f1b931e1d0b0b0685"
 		},
 		{
 			"ImportPath": "github.com/golang/glog",
@@ -36,71 +21,32 @@
 		},
 		{
 			"ImportPath": "github.com/jinzhu/gorm",
-			"Comment": "v1.0-50-ga646b13",
-			"Rev": "a646b13548ec0aa812fe805b2780f460dd2771b6"
+			"Comment": "v1.0-64-gf26fa24",
+			"Rev": "f26fa242cc1bf884f9a4f98849f70fb8e73f441f"
 		},
 		{
 			"ImportPath": "github.com/jinzhu/inflection",
-			"Rev": "8f4d3a0d04ce0b7c0cf3126fb98524246d00d102"
-		},
-		{
-			"ImportPath": "github.com/lib/pq",
-			"Comment": "go1.0-cutoff-107-g4dd446e",
-			"Rev": "4dd446efc17690bc53e154025146f73203b18309"
-		},
-		{
-			"ImportPath": "github.com/lib/pq/oid",
-			"Comment": "go1.0-cutoff-107-g4dd446e",
-			"Rev": "4dd446efc17690bc53e154025146f73203b18309"
+			"Rev": "74387dc39a75e970e7a3ae6a3386b5bd2e5c5cff"
 		},
 		{
 			"ImportPath": "github.com/spf13/pflag",
-			"Rev": "1560c1005499d61b80f865c04d39ca7505bf7f0b"
+			"Rev": "103ce5cd2042f2fe629c1957abb64ab3e7f50235"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/blowfish",
-			"Rev": "611beeb3d5df450a45f4b67f9e25235f54beda72"
+			"Rev": "351dc6a5bf92a5f2ae22fadeee08eb6a45aa2d93"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/cast5",
-			"Rev": "611beeb3d5df450a45f4b67f9e25235f54beda72"
+			"Rev": "351dc6a5bf92a5f2ae22fadeee08eb6a45aa2d93"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/salsa20/salsa",
-			"Rev": "611beeb3d5df450a45f4b67f9e25235f54beda72"
+			"Rev": "351dc6a5bf92a5f2ae22fadeee08eb6a45aa2d93"
 		},
 		{
-			"ImportPath": "golang.org/x/sys/unix",
-			"Rev": "a646d33e2ee3172a661fc09bca23bb4889a41bc8"
-		},
-		{
-			"ImportPath": "gopkg.in/bsm/ratelimit.v1",
-			"Rev": "db14e161995a5177acef654cb0dd785e8ee8bc22"
-		},
-		{
-			"ImportPath": "gopkg.in/redis.v3",
-			"Comment": "v3.6.4",
-			"Rev": "b5e368500d0a508ef8f16e9c2d4025a8a46bcc29"
-		},
-		{
-			"ImportPath": "gopkg.in/redis.v3/internal",
-			"Comment": "v3.6.4",
-			"Rev": "b5e368500d0a508ef8f16e9c2d4025a8a46bcc29"
-		},
-		{
-			"ImportPath": "gopkg.in/redis.v3/internal/consistenthash",
-			"Comment": "v3.6.4",
-			"Rev": "b5e368500d0a508ef8f16e9c2d4025a8a46bcc29"
-		},
-		{
-			"ImportPath": "gopkg.in/redis.v3/internal/hashtag",
-			"Comment": "v3.6.4",
-			"Rev": "b5e368500d0a508ef8f16e9c2d4025a8a46bcc29"
-		},
-		{
-			"ImportPath": "gopkg.in/redis.v3/internal/pool",
-			"Comment": "v3.6.4",
-			"Rev": "b5e368500d0a508ef8f16e9c2d4025a8a46bcc29"
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "6c89f9617983ee917132513a791d8b5850fe90c5"
 		}
 	]
 }
