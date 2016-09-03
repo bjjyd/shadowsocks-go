@@ -21,7 +21,7 @@ binary | sha256 hash
 ## Downloads
 
 binary | sha256 hash
-______ | __________
+------ | ----------
 [shadowss.tar.gz](https://github-cloud.s3.amazonaws.com/releases/64362914/829c3fde-63d1-11e6-9ed1-952c8c002fd8?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAISTNZFOVBIJMK3TQ%2F20160817%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20160817T022019Z&X-Amz-Expires=300&X-Amz-Signature=161dc2178d59711d82e3a1685dc8d5e0e1f26cf3edc8796240e37ab63f869396&X-Amz-SignedHeaders=host&actor_id=7686068&response-content-disposition=attachment%3B%20filename%3Dshadowss&response-content-type=application%2Foctet-stream) | `c0ddc40e622b6fdca8b534de44ef3aed0c6e7f4cca7de86b4203a3afab11f346`
 
 
