@@ -73,9 +73,3 @@ Usage of ./shadowss:
 ```
 
 **if specify --enable-udp-relay=true will be enable udp relay with server. we use  ss-tunnel as client (see shadowsocks-libev). **
-
-# Note to OpenVZ users
-
-**Use OpenVZ VM that supports vswap**. Otherwise, the OS will incorrectly account much more memory than actually used. shadowsocks-go on OpenVZ VM with vswap takes about 3MB memory after startup. (Refer to [this issue](https://shadowsocks/shadowsocks-go/issues/3) for more details.)
-
-If vswap is not an option and memory usage is a problem for you, try [shadowsocks-libev](https://github.com/madeye/shadowsocks-libev).

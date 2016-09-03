@@ -1,10 +1,10 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"net"
-	"strconv"
 
 	"shadowsocks-go/pkg/util"
 
@@ -12,22 +12,32 @@ import (
 )
 
 const (
-	dstAddrIPv4Len   = net.IPv4len
-	dstAddrIPv6Len   = net.IPv6len
-	dstAddrPortLen   = 2
-	protolcolHostLen = 1
-	protocalHMACLen  = 10
+	ProtocolAddrTypeLen    = 1
+	ProtocolDstAddrIPv4Len = net.IPv4len
+	ProtocolDstAddrIPv6Len = net.IPv6len
+	ProtocolDstAddrPortLen = 2
+	ProtocolHostLen        = 1
+	ProtocolHMACLen        = 10
 )
 
 const (
 	addrTypeIPv4   = 1
-	addrTypeDomain = 3
+	AddrTypeDomain = 3
 	addrTypeIPv6   = 4
 )
 
 const (
 	AddrOneTimeAuthFlag = 0x10
 	addrTypeFlag        = 0x0F
+)
+
+const (
+	ParseStageIV = iota
+	ParseStageAddrType
+	ParseStageAddrAnddPort
+	ParseStageUDPData
+	ParseStageHMAC
+	ParseStageDomainLen
 )
 
 //DstAddr description dest ip addr
@@ -38,109 +48,196 @@ type DstAddr struct {
 
 //SSProtocol implement ss package
 type SSProtocol struct {
+	RespHeader  []byte
 	IV          []byte
 	AddrType    byte
 	OneTimeAuth bool
 	HostLen     int
 	DstAddr     DstAddr
-	RespHeader  []byte
 	Data        []byte
 	HMAC        [10]byte
+	ParseStage  int
 }
 
-//Parse ss packet into SSProtocol
-func Parse(decBuffer []byte, byteLen, ivLen int) (*SSProtocol, error) {
+func NewSSProcol(ivLen int) *SSProtocol {
+	return &SSProtocol{
+		RespHeader: make([]byte, 0, 32),
+		IV:         make([]byte, ivLen),
+		ParseStage: ParseStageIV,
+	}
+}
 
-	ssProtocal := new(SSProtocol)
-	ssProtocal.IV = make([]byte, ivLen)
-	copy(ssProtocal.IV, decBuffer[0:ivLen])
+func (ssProtocol *SSProtocol) ParseReqIV(decBuffer []byte) int {
+	copy(ssProtocol.IV, decBuffer[0:len(ssProtocol.IV)])
 
-	parseLen := 0 + ivLen
-	addr := decBuffer[parseLen]
-	ssProtocal.AddrType = addr & addrTypeFlag
-	ssProtocal.OneTimeAuth = 0x10 == (addr & AddrOneTimeAuthFlag)
-	parseLen++
+	return len(ssProtocol.IV)
+}
 
-	glog.V(5).Infof("Got decrypt plain text data buffer \r\n%s \r\n", util.DumpHex(decBuffer[ivLen:]))
+func (ssProtocol *SSProtocol) ParseReqAddrType(decBuffer []byte) (int, error) {
 
-	glog.V(5).Infof("Got AddrType:%d  one time auth:%t\r\n", ssProtocal.AddrType, ssProtocal.OneTimeAuth)
+	addr := decBuffer[0]
+	ssProtocol.AddrType = addr & addrTypeFlag
+	ssProtocol.OneTimeAuth = 0x10 == (addr & AddrOneTimeAuthFlag)
 
-	switch ssProtocal.AddrType {
+	ssProtocol.RespHeader = append(ssProtocol.RespHeader, addr)
+	ssProtocol.RespHeader[0] = ssProtocol.AddrType
+
+	var err error
+
+	switch ssProtocol.AddrType {
 	case addrTypeIPv4:
-		ssProtocal.DstAddr.IP = net.IP(decBuffer[parseLen : parseLen+dstAddrIPv4Len])
-		parseLen += dstAddrIPv4Len
+		ssProtocol.HostLen = ProtocolDstAddrIPv4Len
 	case addrTypeIPv6:
-		ssProtocal.DstAddr.IP = net.IP(decBuffer[parseLen : parseLen+dstAddrIPv6Len])
-		parseLen += dstAddrIPv6Len
-	case addrTypeDomain:
-		hostlen := decBuffer[parseLen]
-		parseLen += protolcolHostLen
+		ssProtocol.HostLen = ProtocolDstAddrIPv6Len
+	case AddrTypeDomain:
+		ssProtocol.HostLen = 0
+	default:
+		err = fmt.Errorf("addr type %v not supported\r\n", ssProtocol.AddrType)
+	}
 
-		ssProtocal.HostLen, _ = strconv.Atoi(string(hostlen))
+	return ProtocolAddrTypeLen, err
+}
 
-		domainEndIdx := ssProtocal.HostLen + parseLen
-		domain := string(decBuffer[parseLen:domainEndIdx])
-		parseLen += ssProtocal.HostLen
+func (ssProtocol *SSProtocol) ParseReqDomainLen(decBuffer []byte) int {
+
+	hostlen := decBuffer[0]
+	glog.V(5).Infof("host len %v \r\n", hostlen)
+	ssProtocol.HostLen = int(hostlen)
+	glog.V(5).Infof("host len %v\r\n", ssProtocol.HostLen)
+
+	ssProtocol.RespHeader = append(ssProtocol.RespHeader, decBuffer[0])
+
+	return ProtocolHostLen
+}
+
+func (ssProtocol *SSProtocol) ParseReqAddrAndPort(decBuffer []byte) (int, error) {
+	ssProtocol.RespHeader = append(ssProtocol.RespHeader, decBuffer...)
+
+	switch ssProtocol.AddrType {
+	case addrTypeIPv4, addrTypeIPv6:
+		ssProtocol.DstAddr.IP = net.IP(decBuffer[:ssProtocol.HostLen])
+	case AddrTypeDomain:
+		domainEndIdx := ssProtocol.HostLen
+		domain := string(decBuffer[:domainEndIdx])
 
 		dIP, err := net.ResolveIPAddr("ip", domain)
 		if err != nil {
-			return nil, fmt.Errorf("[udp]failed to resolve domain name: %s\n", domain)
+			return 0, fmt.Errorf("[udp]failed to resolve domain name: %s\n", domain)
 		}
-		ssProtocal.DstAddr.IP = dIP.IP
+		ssProtocol.DstAddr.IP = dIP.IP
+
 	default:
-		return nil, fmt.Errorf("[udp]addr type %v not supported\r\n", ssProtocal.AddrType)
+		return 0, fmt.Errorf("[udp]addr type %v not supported\r\n", ssProtocol.AddrType)
 	}
 
-	ssProtocal.DstAddr.Port = int(binary.BigEndian.Uint16(decBuffer[parseLen : parseLen+dstAddrPortLen]))
-	parseLen += dstAddrPortLen
+	parseLen := ssProtocol.HostLen
+	ssProtocol.DstAddr.Port = int(binary.BigEndian.Uint16(decBuffer[parseLen : parseLen+ProtocolDstAddrPortLen]))
+	parseLen += ProtocolDstAddrPortLen
 
-	ssProtocal.RespHeader = make([]byte, parseLen-ivLen)
-	copy(ssProtocal.RespHeader, decBuffer[ivLen:parseLen])
-	//need to fix resp header
-	ssProtocal.RespHeader[0] = ssProtocal.AddrType
-
-	dataBufferLen := 0
-	if ssProtocal.OneTimeAuth {
-		dataBufferLen = byteLen - parseLen - protocalHMACLen
-
-		copy(ssProtocal.HMAC[:], decBuffer[parseLen+dataBufferLen:])
-
-		glog.V(5).Infof("Got decrypt HMAC buffer \r\n%s \r\n", util.DumpHex(ssProtocal.HMAC[:]))
-	} else {
-		dataBufferLen = byteLen - parseLen
-	}
-	dataBufferEndIdex := dataBufferLen + parseLen
-	ssProtocal.Data = make([]byte, dataBufferLen)
-	copy(ssProtocal.Data, decBuffer[parseLen:dataBufferEndIdex])
-
-	glog.V(5).Infof("Got decrypt data buffer \r\n%s \r\n", util.DumpHex(ssProtocal.Data[:]))
-	return ssProtocal, nil
+	return parseLen, nil
 }
 
-// //encodeUDPResp encode buffer for resp.  n = iv + payload
-// func encodeUDPResp(b []byte, byteLen int, cipher *Cipher) ([]byte, error) {
-// 	dataStart := 0
+func (ssProtocol *SSProtocol) ParseReqHMAC(decBuffer []byte) int {
+	copy(ssProtocol.HMAC[:], decBuffer[:ProtocolHMACLen])
+
+	return ProtocolHMACLen
+}
+
+func (ssProtocol *SSProtocol) ParseUDPReqData(decBuffer []byte) int {
+	buffLen := len(decBuffer)
+
+	ssProtocol.Data = make([]byte, buffLen)
+	copy(ssProtocol.Data, decBuffer[:buffLen])
+
+	return buffLen
+}
+
+// //Parse ss packet into SSProtocol
+// func Parse(decBuffer []byte, byteLen, ivLen int) (*SSProtocol, error) {
 //
-// 	iv, err := cipher.initEncryptFake()
-// 	if err != nil {
-// 		glog.Errorf("init encrypt failure %v\r\n", err)
-// 		return nil, err
+// 	ssProtocol := new(SSProtocol)
+//
+// 	ssProtocol.ParseReqIV(decBuffer, ivLen)
+// 	for index := byteLen; index > 0; index++ {
+//
 // 	}
 //
-// 	dataSize := byteLen + len(iv) // for addr type
-// 	cipherData := make([]byte, dataSize)
-// 	copy(cipherData[0:], iv)
-// 	dataStart = len(iv)
+// 	parseLen := 0 + ivLen
+// 	ssProtocol.ParseReqIV(decBuffer, byteLen, ivLen)
 //
-// 	plainText := make([]byte, byteLen)
-// 	copy(plainText[:], b[:])
+// 	parseLen++
 //
-// 	glog.V(5).Infof("encrypt cipher ivlen(%d) iv: \r\n%s \r\n", len(iv), util.DumpHex(iv))
-// 	glog.V(5).Infof("encrypt plainText data : \r\n%s \r\n", util.DumpHex(plainText[:]))
+// 	glog.V(5).Infof("Got decrypt plain text data buffer \r\n%s \r\n", util.DumpHex(decBuffer[ivLen:]))
 //
-// 	cipher.encrypt(cipherData[dataStart:], plainText)
+// 	glog.V(5).Infof("Got AddrType:%d  one time auth:%t\r\n", ssProtocol.AddrType, ssProtocol.OneTimeAuth)
 //
-// 	glog.V(5).Infof("encrypt data: \r\n%s \r\n", util.DumpHex(cipherData[dataStart:]))
+// 	switch ssProtocol.AddrType {
+// 	case addrTypeIPv4:
+// 		ssProtocol.DstAddr.IP = net.IP(decBuffer[parseLen : parseLen+protocaldstAddrIPv4Len])
+// 		parseLen += dstAddrIPv4Len
+// 	case addrTypeIPv6:
+// 		ssProtocol.DstAddr.IP = net.IP(decBuffer[parseLen : parseLen+protocaldstAddrIPv6Len])
+// 		parseLen += dstAddrIPv6Len
+// 	case addrTypeDomain:
+// 		hostlen := decBuffer[parseLen]
+// 		parseLen += protolcolHostLen
 //
-// 	return cipherData, nil
+// 		ssProtocol.HostLen, _ = strconv.Atoi(string(hostlen))
+//
+// 		domainEndIdx := ssProtocol.HostLen + parseLen
+// 		domain := string(decBuffer[parseLen:domainEndIdx])
+// 		parseLen += ssProtocol.HostLen
+//
+// 		dIP, err := net.ResolveIPAddr("ip", domain)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("[udp]failed to resolve domain name: %s\n", domain)
+// 		}
+// 		ssProtocol.DstAddr.IP = dIP.IP
+// 	default:
+// 		return nil, fmt.Errorf("[udp]addr type %v not supported\r\n", ssProtocol.AddrType)
+// 	}
+//
+// 	ssProtocol.DstAddr.Port = int(binary.BigEndian.Uint16(decBuffer[parseLen : parseLen+protocaldstAddrPortLen]))
+// 	parseLen += dstAddrPortLen
+//
+// 	ssProtocol.RespHeader = make([]byte, parseLen-ivLen)
+// 	copy(ssProtocol.RespHeader, decBuffer[ivLen:parseLen])
+// 	//need to fix resp header
+// 	ssProtocol.RespHeader[0] = ssProtocol.AddrType
+//
+// 	dataBufferLen := 0
+// 	if ssProtocol.OneTimeAuth {
+// 		dataBufferLen = byteLen - parseLen - protocalHMACLen
+//
+// 		copy(ssProtocol.HMAC[:], decBuffer[parseLen+dataBufferLen:])
+//
+// 		glog.V(5).Infof("Got decrypt HMAC buffer \r\n%s \r\n", util.DumpHex(ssProtocol.HMAC[:]))
+// 	} else {
+// 		dataBufferLen = byteLen - parseLen
+// 	}
+// 	dataBufferEndIdex := dataBufferLen + parseLen
+// 	ssProtocol.Data = make([]byte, dataBufferLen)
+// 	copy(ssProtocol.Data, decBuffer[parseLen:dataBufferEndIdex])
+//
+// 	glog.V(5).Infof("Got decrypt data buffer \r\n%s \r\n", util.DumpHex(ssProtocol.Data[:]))
+// 	return ssProtocol, nil
 // }
+
+func (ssProtocol *SSProtocol) CheckHMAC(key []byte, authData []byte) bool {
+	if ssProtocol.OneTimeAuth {
+		authKey := append(ssProtocol.IV, key...)
+
+		glog.V(5).Infof("request auth data: \r\n %s \r\n  authKey:\r\n %s \r\n", util.DumpHex(authData), util.DumpHex(authKey))
+
+		hmac := util.HmacSha1(authKey, authData)
+		if !bytes.Equal(ssProtocol.HMAC[:], hmac) {
+			glog.Errorf("Unauthorized request\r\n")
+			return false
+		}
+	} else {
+		glog.Warningf("invalid request with auth \r\n")
+		return false
+	}
+
+	return true
+}

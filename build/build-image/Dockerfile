@@ -5,18 +5,14 @@ MAINTAINER seanchann <seanchann@foxmail.com>
 RUN set -ex \
 	&& apk add --no-cache --virtual bash
 
-COPY . /go/src/shadowsocks/shadowsocks-go/
+COPY . /go/src/shadowsocks-go/
 COPY /build/build-image/files/entrypoint.sh /entrypoint.sh
-COPY /build/build-image/files/mu-config.conf /conf/mu-config.conf
-COPY /build/build-image/files/multi-user.json /conf/config.json
+COPY /build/build-image/files/config.json //conf/config.json
 
-RUN cd /go/src/shadowsocks/shadowsocks-go/ \
+RUN cd /go/src/shadowsocks-go/ \
 	&& cp vendor/* /go/src/ -rf \
-	&& cp sample-config/server-multi-port.json /config.json \
-	&& cd cmd/shadowsocks-server/ \
-	&& go build -v -o  /go/bin/shadowss \
-	&& cd mu \
-	&& go build -v -o  /go/bin/shadowss-mu \
+	&& cd cmd/shadowss/ \
+	&& go build -v  -o  /go/bin/shadowss \
 	&& chmod +x /entrypoint.sh
 
 

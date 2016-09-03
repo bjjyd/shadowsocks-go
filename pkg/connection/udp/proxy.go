@@ -1,7 +1,6 @@
 package udp
 
 import (
-	"bytes"
 	"fmt"
 	"net"
 	"sync"
@@ -32,7 +31,7 @@ type Proxy struct {
 
 	wg sync.WaitGroup
 
-	UploadTraffic int64 //request upload traffic
+	uploadTraffic int64 //request upload traffic
 }
 
 type receive struct {
@@ -88,9 +87,18 @@ func (pxy *Proxy) Stop() {
 func (pxy *Proxy) Traffic() (int64, int64) {
 	var upload, download int64
 	for _, val := range pxy.ClientDict {
+		val.Dmutex.Lock()
+
 		download += val.DownloadTraffic
+		val.DownloadTraffic = 0
+
+		val.Dmutex.Unlock()
 	}
-	upload = pxy.UploadTraffic
+
+	pxy.dlock()
+	upload = pxy.uploadTraffic
+	pxy.uploadTraffic = 0
+	pxy.dunlock()
 
 	return upload, download
 }
@@ -120,7 +128,15 @@ func (pxy *Proxy) decrypt(encBuffer []byte) ([]byte, error) {
 
 	decBuffer := make([]byte, byteLen)
 	copy(decBuffer[0:ivLen], encBuffer[0:ivLen])
-	pxy.cryp.Decrypt(decBuffer[0:ivLen], decBuffer[ivLen:], encBuffer[ivLen:byteLen])
+
+	_, err := pxy.cryp.UpdataCipherStream(decBuffer[0:ivLen], false)
+	if err != nil {
+		return nil, err
+	}
+	err = pxy.cryp.Decrypt(decBuffer[ivLen:], encBuffer[ivLen:byteLen])
+	if err != nil {
+		return nil, err
+	}
 
 	glog.V(5).Infof("Got  decrypt cipher ivlen(%d) iv: \r\n%s", ivLen, util.DumpHex(decBuffer[0:ivLen]))
 	glog.V(5).Infof("Got  decrypt datalen(%d) data:\r\n%s", byteLen, util.DumpHex(encBuffer[ivLen:byteLen]))
@@ -140,7 +156,16 @@ func AssembleResp(resp []byte, byteLen int, crypto *crypto.Crypto) ([]byte, erro
 	plainText := make([]byte, byteLen)
 	copy(plainText[:], resp[:])
 
-	iv, err := crypto.Encrypt(cipherData[dataStart:], plainText)
+	iv, err := crypto.UpdataCipherStream(nil, true)
+	if err != nil {
+		return nil, err
+	}
+
+	err = crypto.Encrypt(cipherData[dataStart:], plainText)
+	if err != nil {
+		return nil, err
+	}
+
 	copy(cipherData[0:dataStart], iv)
 
 	glog.V(5).Infof("encrypt cipher ivlen(%d) iv: \r\n%s \r\n", len(iv), util.DumpHex(iv))
@@ -166,7 +191,7 @@ func (pxy *Proxy) handleRequest(recv receive) {
 		return
 	}
 
-	ssProtocol, err := protocol.Parse(decBuffer, n, pxy.cryp.GetIVLen())
+	ssProtocol, err := protocol.ParseUDPReq(decBuffer, n, pxy.cryp.GetIVLen())
 	if err != nil {
 		glog.Warningf("parse request failure(%v) ignore \r\n", err)
 		return
@@ -174,22 +199,17 @@ func (pxy *Proxy) handleRequest(recv receive) {
 
 	//check ota
 	if pxy.oneTimeAuth {
-		if ssProtocol.OneTimeAuth {
-			authKey := append(ssProtocol.IV, pxy.cryp.Key...)
-			reqHeader := make([]byte, len(ssProtocol.RespHeader))
-			copy(reqHeader, ssProtocol.RespHeader)
-			reqHeader[0] = ssProtocol.AddrType | (protocol.AddrOneTimeAuthFlag)
+		reqHeader := make([]byte, len(ssProtocol.RespHeader))
+		copy(reqHeader, ssProtocol.RespHeader)
+		reqHeader[0] = ssProtocol.AddrType | (protocol.AddrOneTimeAuthFlag)
 
-			authData := append(reqHeader, ssProtocol.Data...)
-			glog.V(5).Infof("request auth data: \r\n %s \r\n  authKey:\r\n %s \r\n", util.DumpHex(authData), util.DumpHex(authKey))
+		authData := append(reqHeader, ssProtocol.Data...)
+		glog.V(5).Infof("read req header(%s) data:%s\r\n",
+			util.DumpHex(reqHeader[:]), util.DumpHex(ssProtocol.Data[:]))
 
-			hmac := util.HmacSha1(authKey, authData)
-			if !bytes.Equal(ssProtocol.HMAC[:], hmac) {
-				glog.Errorf("Unauthorized request\r\n")
-				return
-			}
-		} else {
-			glog.Warningf("invalid request with auth \r\n")
+		result := ssProtocol.CheckHMAC(pxy.cryp.Key[:], authData)
+		if !result {
+			glog.Errorln("invalid not auth request")
 			return
 		}
 	} else {
@@ -232,7 +252,9 @@ func (pxy *Proxy) handleRequest(recv receive) {
 		glog.Warningln("write buffer into remote server failure:", err)
 		return
 	}
-	pxy.UploadTraffic += int64(len(ssProtocol.Data[:]))
+	pxy.dlock()
+	pxy.uploadTraffic += int64(len(ssProtocol.Data[:]))
+	pxy.dunlock()
 }
 
 //RunProxy Routine to handle inputs to Proxy port

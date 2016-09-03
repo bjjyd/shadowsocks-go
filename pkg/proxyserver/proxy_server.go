@@ -68,14 +68,14 @@ func (srv *Servers) GetTraffic(client *config.ConnectionInfo) (int64, int64, err
 	return tcpUpload + udpUpload, tcpDownload + udpDownload, nil
 }
 
-//StopServer create new server for users
+//StopServer stop server only
 func (srv *Servers) StopServer(client *config.ConnectionInfo) {
 	tcpSrv, ok := srv.tcpSrvMap[client.ID]
 	if !ok {
 		glog.Warningf("not found tcp server %s\r\n", client.Port)
 	} else {
 		tcpSrv.Stop()
-		delete(srv.tcpSrvMap, client.ID)
+
 	}
 
 	if srv.enableUDP {
@@ -84,9 +84,30 @@ func (srv *Servers) StopServer(client *config.ConnectionInfo) {
 			glog.Warningf("not found tcp server %s\r\n", client.Port)
 		} else {
 			udpSrv.Stop()
+
+		}
+	}
+}
+
+//CleanUpServer delete server from proxy manage. not use
+func (srv *Servers) CleanUpServer(client *config.ConnectionInfo) {
+
+	_, ok := srv.tcpSrvMap[client.ID]
+	if !ok {
+		glog.Warningf("not found tcp server %s\r\n", client.Port)
+	} else {
+		delete(srv.tcpSrvMap, client.ID)
+	}
+
+	if srv.enableUDP {
+		_, ok := srv.udpSrvMap[client.ID]
+		if !ok {
+			glog.Warningf("not found tcp server %s\r\n", client.Port)
+		} else {
 			delete(srv.udpSrvMap, client.ID)
 		}
 	}
+
 }
 
 //StartWithConfig create new server for users

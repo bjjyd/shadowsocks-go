@@ -15,6 +15,7 @@ type Connection struct {
 	ServerConn      *net.UDPConn // UDP connection to server
 	Quit            chan struct{}
 	DownloadTraffic int64 //download traffic
+	Dmutex          *sync.Mutex
 }
 
 //NewConnection Generate a new connection by opening a UDP connection to the server
@@ -29,6 +30,7 @@ func NewConnection(srvAddr, cliAddr *net.UDPAddr) *Connection {
 
 	conn.ServerConn = srvudp
 	conn.Quit = make(chan struct{})
+	conn.Dmutex = new(sync.Mutex)
 	return conn
 }
 
@@ -75,7 +77,9 @@ func (conn *Connection) RunConnection(write *net.UDPConn, crypto *crypto.Crypto,
 			if err != nil {
 				glog.Errorf("write local->%s failure %v \r\n", conn.ClientAddr.String(), err)
 			}
+			conn.Dmutex.Lock()
 			conn.DownloadTraffic += int64(len(encBuff[:]))
+			conn.Dmutex.Unlock()
 		}
 	}
 }
