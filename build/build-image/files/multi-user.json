@@ -1,7 +1,0 @@
-{
-	"port_password": {
-		"8387": "44c096c8e1e5fd7a85ea0bbe4623778d"
-	},
-	"method": "aes-256-cfb",
-	"timeout": 600
-}
