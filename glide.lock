@@ -1,0 +1,20 @@
+hash: cfbe07c0d78aaa693bd539f8b8fc5f1a7c57f861307ef88a1ba5b4945e672bd5
+updated: 2016-10-07T11:32:33.558243795+08:00
+imports:
+- name: github.com/codahale/chacha20
+  version: ec07b4f69a3f70b1dd2a8ad77230deb1ba5d6953
+- name: github.com/golang/glog
+  version: 23def4e6c14b4da8ac2ed8007337bc5eb5007998
+- name: github.com/spf13/pflag
+  version: 103ce5cd2042f2fe629c1957abb64ab3e7f50235
+- name: golang.org/x/crypto
+  version: 351dc6a5bf92a5f2ae22fadeee08eb6a45aa2d93
+  subpackages:
+  - blowfish
+  - cast5
+  - salsa20/salsa
+- name: golang.org/x/net
+  version: 6c89f9617983ee917132513a791d8b5850fe90c5
+  subpackages:
+  - context
+testImports: []
