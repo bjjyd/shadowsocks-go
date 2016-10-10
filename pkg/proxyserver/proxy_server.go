@@ -1,9 +1,11 @@
 package proxyserver
 
 import (
+	"fmt"
 	"shadowsocks-go/pkg/config"
 	"shadowsocks-go/pkg/connection/tcp"
 	"shadowsocks-go/pkg/connection/udp"
+	"time"
 
 	"github.com/golang/glog"
 )
@@ -34,7 +36,7 @@ func (srv *Servers) storeSrv(tcp ProxyServer, udp ProxyServer, cfg *config.Conne
 	}
 }
 
-//CheckServer create new server for users
+//CheckServer Compare configure if exist
 func (srv *Servers) CheckServer(client *config.ConnectionInfo) (bool, bool) {
 
 	var equal bool
@@ -44,6 +46,15 @@ func (srv *Servers) CheckServer(client *config.ConnectionInfo) (bool, bool) {
 	}
 
 	return exist, equal
+}
+
+func (srv *Servers) GetListenPort(client *config.ConnectionInfo) (int, error) {
+	tcpSrv, exist := srv.tcpSrvMap[client.ID]
+	if exist {
+		return tcpSrv.GetListenPort(), nil
+	}
+
+	return 0, fmt.Errorf("not found this service")
 }
 
 //GetTraffic collection traffic for user,return upload traffic and download traffic
@@ -118,6 +129,12 @@ func (srv *Servers) StartWithConfig(v *config.ConnectionInfo) {
 	tcpSrv := tcp.NewTCPServer(v)
 	go tcpSrv.Run()
 
+	//we need to ensure tcp and udp on same port
+	time.Sleep(1 * time.Second)
+	port := tcpSrv.GetListenPort()
+	//fix config for udp
+	v.Port = port
+
 	var udpSrv ProxyServer
 	if srv.enableUDP {
 		udpSrv = udp.NewUDPServer(v)
@@ -133,4 +150,14 @@ func (srv *Servers) Start() {
 		config := &config.ServerCfg.Clients[idx]
 		srv.StartWithConfig(config)
 	}
+}
+
+func (srv *Servers) GetUsersConfig() []config.ConnectionInfo {
+	var users []config.ConnectionInfo
+	for _, handler := range srv.tcpSrvMap {
+		config := handler.GetConfig()
+		users = append(users, config)
+	}
+
+	return users
 }

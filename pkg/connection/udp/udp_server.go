@@ -56,9 +56,19 @@ func (udpSrv *UDPServer) Run() {
 	}
 	udpSrv.udpProxy = proxy
 
+	udpSrv.Config.Port = udpSrv.udpProxy.GetPort()
+
 	go proxy.RunProxy()
 }
 
 func (udpSrv *UDPServer) Compare(client *config.ConnectionInfo) bool {
 	return reflect.DeepEqual(udpSrv.Config, client)
+}
+
+func (udpSrv *UDPServer) GetListenPort() int {
+	return udpSrv.Config.Port
+}
+
+func (udpSrv *UDPServer) GetConfig() config.ConnectionInfo {
+	return *udpSrv.Config
 }

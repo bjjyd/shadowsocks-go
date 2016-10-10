@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"shadowsocks-go/pkg/crypto/algorithm"
-	"shadowsocks-go/pkg/util"
+	cryptoutil "shadowsocks-go/pkg/util/crypto"
 )
 
 //Crypto use for crypto wrap
@@ -28,7 +28,7 @@ func NewCrypto(method, password string) (*Crypto, error) {
 		return nil, err
 	}
 
-	cryp.Key = util.EvpBytesToKey(password, cryp.alg.GetKeyLen())
+	cryp.Key = cryptoutil.EvpBytesToKey(password, cryp.alg.GetKeyLen())
 
 	return cryp, nil
 }

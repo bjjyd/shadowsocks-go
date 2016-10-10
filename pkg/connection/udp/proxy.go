@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"shadowsocks-go/pkg/access"
 	"shadowsocks-go/pkg/crypto"
 	"shadowsocks-go/pkg/protocol"
 	"shadowsocks-go/pkg/util"
@@ -64,9 +65,14 @@ func NewProxy(port int, cryp *crypto.Crypto, auth bool, timeout time.Duration) *
 	proxy.ClientDict = make(map[string]*Connection)
 	proxy.dmutex = new(sync.Mutex)
 	proxy.quit = make(chan struct{})
-	proxy.port = port
+	proxy.port = pudp.LocalAddr().(*net.UDPAddr).Port
 
 	return proxy
+}
+
+//Stop quit loop
+func (pxy *Proxy) GetPort() int {
+	return pxy.port
 }
 
 func (pxy *Proxy) dlock() {
@@ -261,6 +267,16 @@ func (pxy *Proxy) handleRequest(recv receive) {
 func (pxy *Proxy) RunProxy() {
 
 	pxy.wg.Add(1)
+
+	defer func() {
+		access.TurnoffLocalPort(pxy.port, string("udp"))
+	}()
+
+	//open port
+	err := access.OpenLocalPort(pxy.port, string("udp"))
+	if err != nil {
+		glog.Warningf("open port(%d) on local host firewall error %v", pxy.port, err)
+	}
 
 	for {
 		recvChan := make(chan receive, 1)
