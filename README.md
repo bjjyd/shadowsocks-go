@@ -79,5 +79,5 @@ Usage of ./shadowss:
 
 # Extended Feature
 
-- automatically opens the currently configure port
+- automatically opens firewall port,  the currently configure port
 - multi user  base on configure file
