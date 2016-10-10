@@ -7,9 +7,9 @@ import (
 
 	"github.com/golang/glog"
 
-	utildbus "shadowss/pkg/util/dbus"
-	utilexec "shadowss/pkg/util/exec"
-	utiliptables "shadowss/pkg/util/iptables"
+	utildbus "shadowsocks-go/pkg/util/dbus"
+	utilexec "shadowsocks-go/pkg/util/exec"
+	utiliptables "shadowsocks-go/pkg/util/iptables"
 )
 
 var IptablesHandler utiliptables.Interface

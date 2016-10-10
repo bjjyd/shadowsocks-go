@@ -24,11 +24,11 @@ import (
 	"strings"
 	"sync"
 
-	utildbus "shadowss/pkg/util/dbus"
+	utildbus "shadowsocks-go/pkg/util/dbus"
 
-	utilexec "shadowss/pkg/util/exec"
+	utilexec "shadowsocks-go/pkg/util/exec"
 
-	"shadowss/pkg/util/sets"
+	"shadowsocks-go/pkg/util/sets"
 
 	"github.com/coreos/go-semver/semver"
 	godbus "github.com/godbus/dbus"

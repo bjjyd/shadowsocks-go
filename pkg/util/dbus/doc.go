@@ -15,4 +15,4 @@ limitations under the License.
 */
 
 // Package dbus provides an injectable interface and implementations for D-Bus communication
-package dbus // import "shadowss/pkg/util/dbus"
+package dbus // import "shadowsocks-go/pkg/util/dbus"

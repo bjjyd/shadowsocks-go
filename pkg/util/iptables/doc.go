@@ -15,4 +15,4 @@ limitations under the License.
 */
 
 // Package iptables provides an interface and implementations for running iptables commands.
-package iptables // import "shadowss/pkg/util/iptables"
+package iptables // import "shadowsocks-go/pkg/util/iptables"

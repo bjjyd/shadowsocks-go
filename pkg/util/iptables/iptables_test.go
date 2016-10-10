@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"shadowss/pkg/util/dbus"
-	"shadowss/pkg/util/exec"
-	"shadowss/pkg/util/sets"
+	"shadowsocks-go/pkg/util/dbus"
+	"shadowsocks-go/pkg/util/exec"
+	"shadowsocks-go/pkg/util/sets"
 )
 
 func getIptablesCommand(protocol Protocol) string {
