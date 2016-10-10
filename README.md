@@ -19,6 +19,8 @@ go build -a  -o shadowss
 
 It's recommended to disable cgo when compiling shadowsocks-go. This will prevent the go runtime from creating too many threads for dns lookup.
 
+
+
 # Usage
 
 the server  program will look for `config.json` . You can use `--config-file` option to specify  configuration file.
@@ -73,3 +75,9 @@ Usage of ./shadowss:
 ```
 
 **if specify --enable-udp-relay=true will be enable udp relay with server. we use  ss-tunnel as client (see shadowsocks-libev). **
+
+
+# Extended Feature
+
+- automatically opens the currently configure port
+- multi user  base on configure file
