@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"shadowsocks-go/pkg/access"
 	"shadowsocks-go/pkg/config"
 
 	"shadowsocks-go/pkg/connection/tcp/ssclient"
@@ -85,6 +86,10 @@ func (tcpSrv *TCPServer) handleRequest(ctx context.Context, acceptConn net.Conn)
 		glog.Errorf("get invalid request  from %s error %v\r\n", reqAddr, err)
 		return
 	}
+	if ssProtocol.OneTimeAuth != tcpSrv.Config.EnableOTA {
+		glog.Errorf("not match one time auth with config(%v:%v)\r\n", ssProtocol.OneTimeAuth, tcpSrv.Config.EnableOTA)
+		return
+	}
 	remoteAddr := &net.TCPAddr{
 		IP:   ssProtocol.DstAddr.IP,
 		Port: ssProtocol.DstAddr.Port,
@@ -149,13 +154,23 @@ func (tcpSrv *TCPServer) Run() {
 	}
 	defer ln.Close()
 
+	//update user port if input config port equal 0
+	tcpSrv.Config.Port = ln.Addr().(*net.TCPAddr).Port
+
 	var ctx context.Context
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	defer func() {
 		cancel()
 		ln.Close()
+		access.TurnoffLocalPort(tcpSrv.Config.Port, string("tcp"))
 	}()
+
+	//open port
+	err = access.OpenLocalPort(tcpSrv.Config.Port, string("tcp"))
+	if err != nil {
+		glog.Warningf("open port(%d) on local host firewall error %v", tcpSrv.Config.Port, err)
+	}
 
 	var wg sync.WaitGroup
 	type accepted struct {
@@ -165,7 +180,7 @@ func (tcpSrv *TCPServer) Run() {
 	for {
 		c := make(chan accepted, 1)
 		go func() {
-			glog.V(5).Infoln("wait for accept on %v\r\n", port)
+			glog.V(5).Infof("wait for accept on %v\r\n", tcpSrv.Config.Port)
 			var conn net.Conn
 			conn, err = ln.Accept()
 			c <- accepted{conn: conn, err: err}
@@ -194,6 +209,14 @@ func (tcpSrv *TCPServer) Run() {
 
 func (tcpSrv *TCPServer) Compare(client *config.ConnectionInfo) bool {
 	return reflect.DeepEqual(*tcpSrv.Config, *client)
+}
+
+func (tcpSrv *TCPServer) GetListenPort() int {
+	return tcpSrv.Config.Port
+}
+
+func (tcpSrv *TCPServer) GetConfig() config.ConnectionInfo {
+	return *tcpSrv.Config
 }
 
 func lock(mutex *sync.Mutex) {

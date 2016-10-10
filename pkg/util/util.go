@@ -9,9 +9,12 @@ import (
 	"os"
 )
 
-func PrintVersion() {
-	const version = "1.1.4"
-	fmt.Println("shadowsocks-go version", version)
+const version = "2.1.3-alpha"
+
+func PrintVersion() string {
+
+	fmt.Println("shadowss version", version)
+	return version
 }
 
 func IsFileExists(path string) (bool, error) {

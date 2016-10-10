@@ -21,6 +21,7 @@ type Client struct {
 	chunkId       uint32
 	IV            []byte
 	RequestBuffer *bytesPool.BytePool
+	enableOTA     bool
 }
 
 func NewClient(c net.Conn, cipher *crypto.Crypto) *Client {
@@ -29,6 +30,7 @@ func NewClient(c net.Conn, cipher *crypto.Crypto) *Client {
 		cryp:          cipher,
 		chunkId:       0,
 		RequestBuffer: bytesPool.NewBytePool(1024*5, 1024*5),
+		enableOTA:     false,
 	}
 	return client
 }
@@ -147,6 +149,7 @@ func (c *Client) ParseTcpReq() (*protocol.SSProtocol, error) {
 		ssProtocol.DstAddr.IP.String(), ssProtocol.DstAddr.Port)
 
 	if ssProtocol.OneTimeAuth {
+		c.enableOTA = true
 		err = c.parseTCPBuffer(ssProtocol, protocol.ParseStageHMAC, protocol.ProtocolHMACLen)
 		if err != nil {
 			glog.Errorf("parse request hmac error %v\r\n", err)
@@ -162,37 +165,50 @@ func (c *Client) ParseReqData(buf []byte) ([]byte, error) {
 	const (
 		dataLenLen  = 2
 		hmacSha1Len = 10
-		idxData0    = dataLenLen + hmacSha1Len
 	)
 
 	bufLen := len(buf)
-	headerLen := dataLenLen + hmacSha1Len
+	headerLen := 0
+	dataEndIdx := 0
 
-	if bufLen < headerLen {
-		buf = make([]byte, headerLen)
+	if c.enableOTA {
+		idxData0 := dataLenLen + hmacSha1Len
+		headerLen = dataLenLen + hmacSha1Len
+
+		if bufLen < headerLen {
+			buf = make([]byte, headerLen)
+		}
+
+		if _, err := io.ReadFull(c, buf[:headerLen]); err != nil {
+			return nil, err
+		}
+		dataLen := binary.BigEndian.Uint16(buf[:dataLenLen])
+		expectedHmacSha1 := buf[dataLenLen:idxData0]
+
+		dataEndIdx = int(dataLen) + headerLen
+		if bufLen < dataEndIdx {
+			buf = make([]byte, int(dataLen)+headerLen)
+		}
+
+
+		if _, err := io.ReadFull(c, buf[headerLen:dataEndIdx]); err != nil {
+			return nil, err
+		}
+		chunkIdBytes := make([]byte, 4)
+		chunkId := c.getAndIncrChunkId()
+		binary.BigEndian.PutUint32(chunkIdBytes, chunkId)
+		actualHmacSha1 := util.HmacSha1(append(c.IV, chunkIdBytes...), buf[headerLen:dataEndIdx])
+		if !bytes.Equal(expectedHmacSha1, actualHmacSha1) {
+			return nil, fmt.Errorf("Not auth data")
+		}
+	} else {
+		n, err := c.Read(buf[:])
+		if err != nil {
+			return nil, err
+		}
+		headerLen = 0
+		dataEndIdx = n
 	}
 
-	if _, err := io.ReadFull(c, buf[:headerLen]); err != nil {
-		return nil, err
-	}
-	dataLen := binary.BigEndian.Uint16(buf[:dataLenLen])
-	expectedHmacSha1 := buf[dataLenLen:idxData0]
-
-	dataEndIdx := int(dataLen) + headerLen
-	if bufLen < dataEndIdx {
-		buf = make([]byte, dataLen)
-	}
-
-	if _, err := io.ReadFull(c, buf[headerLen:dataEndIdx]); err != nil {
-		return nil, err
-	}
-
-	chunkIdBytes := make([]byte, 4)
-	chunkId := c.getAndIncrChunkId()
-	binary.BigEndian.PutUint32(chunkIdBytes, chunkId)
-	actualHmacSha1 := util.HmacSha1(append(c.IV, chunkIdBytes...), buf[headerLen:dataEndIdx])
-	if !bytes.Equal(expectedHmacSha1, actualHmacSha1) {
-		return nil, fmt.Errorf("Not auth data")
-	}
 	return buf[headerLen:dataEndIdx], nil
 }
