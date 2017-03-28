@@ -12,7 +12,7 @@ You can also install from source (assume you have go installed):
 
 ```
 git clone  https://github.com/bjjyd/shadowsocks-go
-cd shadowsocks-go/cmd/shadowss/server/
+cd shadowsocks-go/cmd/shadowss
 go build -a  -o shadowss
 ./shadowss --alsologtostderr=true --config-file="/etc/server-multi-port.json" &
 ```
